@@ -21,6 +21,7 @@ This repository contains the scripts and outputs for a web scraping and data ana
 - **ggplot2**: Visualization
 
   ## How to use
+  **The Main Script is present in British Automative Script.rmd**
 **Update the Website URL (if needed)**
 - The web scraping scripts use a variable named url to define the target website. If the website link changes, update the url variable in the Rmd script.
 - The Rmarkdown contains all the steps from the scrapping, cleaning and EDA process splitted with each code chunk and comments.
@@ -28,7 +29,7 @@ This repository contains the scripts and outputs for a web scraping and data ana
 ## Results & Findings
 - Summary statistics reveal trends in pricing, popular models, and consumer interest.
 - Visualizations highlight key patterns and outliers in the dataset.
-- The cleaned dataset is structured and ready for further analysis.
+- The cleaned dataset is structured and ready for further analysis in the car_data_file.csv
 
 ## Future Work
 This project focuses on data collection, cleaning, and initial analysis. Further work may include:
