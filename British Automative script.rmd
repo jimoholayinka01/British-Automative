@@ -1,5 +1,5 @@
 ```{r}
-#Web Scrapping for British Automobile
+#Web scrapping
 ```
 
 
@@ -13,6 +13,7 @@ install.packages("tidyverse")
 install.packages("dplyr")
 install.packages("httr")
 install.packages("corrplot")
+install.packages("mice")
 ```
 ```{r}
 # Load required libraries
@@ -27,6 +28,7 @@ library(stringr)
 library(readr)
 library(corrplot)
 library(tidyr)
+library(mice)
 ```
 
 ```{r}
@@ -219,7 +221,7 @@ car_data2$year <- as.numeric(str_extract(car_data2$year, "^\\d{4}"))
 
 # Extract numeric values from engine column and convert to standard KW
 car_data2$engine <- as.numeric(str_extract(car_data2$engine, "[0-9]+\\.?[0-9]*"))
-car_data2$engine <- ifelse(car_data2$engine < 10, car_data2$engine * 100, car_data2$engine)
+car_data2$engine <- ifelse(car_data2$engine > 10, car_data2$engine / 100, car_data2$engine)
 
 # Remove pound sign and commas from price column
 car_data2$price <- as.numeric(str_replace_all(car_data2$price, "£|,", ""))
@@ -256,21 +258,34 @@ car_data1$year[misplaced_mileage] <- car_data1$mileage[misplaced_mileage]
 car_data1$mileage[misplaced_year] <- car_data1$temp[misplaced_year]
 car_data1$temp <- NULL
 
-# Replace NA values in mileage and engine with the median
-car_data1$mileage[is.na(car_data1$mileage)] <- median(car_data1$mileage, na.rm = TRUE)
-car_data1$engine[is.na(car_data1$engine)] <- median(car_data1$engine, na.rm = TRUE)
-
 # Standardize engine values to KW
-car_data1$engine <- ifelse(car_data1$engine < 10, car_data1$engine * 100, car_data1$engine)
+car_data1$engine <- ifelse(car_data1$engine > 10, car_data1$engine / 100, car_data1$engine)
 
 # Remove pound sign and commas from price column
 car_data1$price <- as.numeric(str_replace_all(car_data1$price, "£|,", ""))
 
 # MERGE BOTH DATASETS
-clear_car_data <- bind_rows(car_data1, car_data2)
+clean_car_data <- bind_rows(car_data1, car_data2)
+
+# USE MICE TO IMPUTE MISSING VALUES
+imputed_data <- mice(clean_car_data, m=1, method='pmm', seed=123)
+
+# Complete the dataset with imputed values
+clean_car_data <- complete(imputed_data)
+
+# Remove index and reset row numbers
+rownames(clean_car_data) <- NULL
+
+# Convert mileage to integer (remove decimals)
+clean_car_data$mileage <- floor(clean_car_data$mileage)
+
+# REMOVE ROWS WITH ANY NA VALUES
+clean_car_data <- na.omit(clean_car_data)  
 
 # View and save cleaned dataset
-View(clear_car_data)
+View(clean_car_data)
+
+
 
 ```
 ```{r}
@@ -278,20 +293,20 @@ View(clear_car_data)
 
 
 #Summarise the dataset
-summary(clear_car_data)
+summary(clean_car_data)
 #Count missing values
-colSums(is.na(clear_car_data))
+colSums(is.na(clean_car_data))
 
 #PLot histograms for numeric variable
 
 par(mfrow = c(2,2))
-hist(clear_car_data$year, col = "skyblue", main = "Distribution of Car Year", xlab = "Year", breaks = 25)
-hist(clear_car_data$mileage, col = "lightcoral", main = "Distribution of Mileage", xlab = "Mileage", breaks = 20)
-hist(clear_car_data$engine, col = "lightgreen", main = "Distribution of Engine Power", xlab = "Engine Size", breaks = 15)
-hist(clear_car_data$price, col = "gold", main = "Distribution of Car Price", xlab = "Price", breaks = 20)
+hist(clean_car_data$year, col = "skyblue", main = "Distribution of Car Year", xlab = "Year", breaks = 25)
+hist(clean_car_data$mileage, col = "lightcoral", main = "Distribution of Mileage", xlab = "Mileage", breaks = 20)
+hist(clean_car_data$engine, col = "lightgreen", main = "Distribution of Engine Power", xlab = "Engine Size", breaks = 15)
+hist(clean_car_data$price, col = "gold", main = "Distribution of Car Price", xlab = "Price", breaks = 20)
 
 #Get the top car brands
-top_brands <- clear_car_data %>% count(brand, sort = TRUE) %>% head(10)
+top_brands <- clean_car_data %>% count(brand, sort = TRUE) %>% head(10)
 
 #plot ggplot of the top brands
 ggplot(top_brands, aes(x = reorder(brand, -n), y = n, fill = brand)) +
@@ -301,7 +316,7 @@ ggplot(top_brands, aes(x = reorder(brand, -n), y = n, fill = brand)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 #Correlation matrix
-numeric_vars <- clear_car_data %>% select(where(is.numeric))
+numeric_vars <- clean_car_data %>% select(where(is.numeric))
 corr_matrix <- cor(numeric_vars, use = "complete.obs")
 
 #PLot correlation heatmap
@@ -309,9 +324,9 @@ corrplot(corr_matrix, method = "color", addCoef.col = "black", tl.col = "black",
 
 #Boxplot to detect outliers
 par(mfrow = c(1,3))
-boxplot(clear_car_data$year, main = "Boxplot of Car Year", col = "skyblue")
-boxplot(clear_car_data$mileage, main = "Boxplot of Mileage", col = "lightcoral")
-boxplot(clear_car_data$price, main = "Boxplot of Car Price", col = "gold")
+boxplot(clean_car_data$year, main = "Boxplot of Car Year", col = "skyblue")
+boxplot(clean_car_data$mileage, main = "Boxplot of Mileage", col = "lightcoral")
+boxplot(clean_car_data$price, main = "Boxplot of Car Price", col = "gold")
 ```
 
 ```{r}
