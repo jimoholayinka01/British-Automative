@@ -1,0 +1,336 @@
+```{r}
+#Web scrapping
+```
+
+
+```{r}
+# Install required libraries
+install.packages("RSelenium")
+install.packages("netstat")
+install.packages("wdman")
+install.packages("rvest")
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("httr")
+install.packages("corrplot")
+install.packages("mice")
+```
+```{r}
+# Load required libraries
+library(RSelenium)
+library(netstat)
+library(tidyverse)
+library(wdman)
+library(rvest)
+library(httr)
+library(dplyr)
+library(stringr)
+library(readr)
+library(corrplot)
+library(tidyr)
+library(mice)
+```
+
+```{r}
+# Initialisation of an empty dataframe.
+car_datas <- data.frame(
+  brand = character(),
+  model = character(),
+  year = character(),
+  mileage = character(),
+  engine = character(),
+  price = character(),
+  stringsAsFactors = FALSE
+)
+```
+```{r}
+# Looping through the first 10 pages of the car website to scrape the html component
+for (i in 1:10) {
+  url <- paste0("https://www.thecarco.co.uk/used-cars/",i)
+   # Read webpage
+  webpages <- read_html(url)
+  # Extract brand name
+  brands <- html_nodes(webpages, ".landing-listing__makemodel") %>% html_text(trim = TRUE)
+  # Extract car model
+  models <- html_nodes(webpages, ".model") %>% html_text(trim = TRUE)
+  # Extract car prices
+  prices <- html_nodes(webpages, ".landing-listing__price .price") %>% html_text(trim = TRUE)
+  # Extract engine type
+  c_details <- html_nodes(webpages, ".landing-listing__trim") %>% html_text(trim = TRUE)
+  engines <- sapply(c_details, function(x) strsplit(x, " ")[[1]][1])
+  #Extract car specifications
+  car_specs <- html_nodes(webpages, ".landing-listing__spec") %>% html_text(trim = TRUE)
+  # Extract year and mileage
+  car_years <- sapply(car_specs, function(x) ifelse(length(strsplit(x, " ")[[1]]) >= 1, strsplit(x, "\n")[[1]][1], NA))
+  mileages <- sapply(car_specs, function(x) ifelse(length(strsplit(x, " ")[[1]]) >= 2, strsplit(x, "\n")[[1]][2], NA))
+  # Creating a temporary dataframe
+  temp_data <- data.frame(
+    brand = brands,
+    model = models,
+    year = car_years,
+    mileage = mileages,
+    engine = engines,
+    price = prices,
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
+  # Append to main dataframe
+  car_datas <- bind_rows(car_datas, temp_data)
+}
+# View the collected data
+view(car_datas)
+```
+```{r}
+#Dowloading all Selenium dependancies
+selenium(version =  "3.141.59")
+selenium_obj <- selenium(retcommand = T, check = F, version =  "3.141.59")
+```
+```{r}
+# Starting RSelenium 
+rs_driver_object <- rsDriver(browser = "firefox",
+                         verbose = F,
+                         chromever = NULL,
+                         port = free_port(), version =  "3.141.59")
+```
+
+
+```{r}
+#Opening the url link from the client side
+remDR <- rs_driver_object$client
+remDR$open
+remDR$navigate("https://www.autotrader.co.uk/car-search?postcode=M6%205QD&homeDeliveryAdverts=include&advertising-location=at_cars&page=1")
+```
+```{r}
+#Reading the html page
+page_source <- remDR$getPageSource()[[1]]
+page_html <- read_html(page_source)
+pg_title <- page_html %>% html_nodes(".eDCaxo") %>% html_text()
+pg_mile <- page_html %>% html_nodes("li.dUUmL") %>% html_text()
+```
+```{r}
+# Extraction of the year the car was manufactured from the HTML page
+mileages_1 <- pg_mile[seq(1, length(pg_mile), by = 2)] %>% 
+  gsub(" miles", "", .) %>% gsub(",", "", .)
+
+# Extraction of Mileages of the car from the HTML page
+car_year_1 <- pg_mile[seq(2, length(pg_mile), by = 2)] %>% 
+  gsub(" .*", "", .)
+
+# Setting values for handling null or missing data
+min_length <- min(length(pg_title), length(mileages_1), length(car_year_1))
+
+# Truncate vectors to ensure equal length
+pg_title <- pg_title[1:min_length]
+mileages_1 <- mileages_1[1:min_length]
+car_year_1 <- car_year_1[1:min_length]
+
+# Extraction of the brand name, model, and prices
+brands_1 <- sapply(pg_title, function(x) trimws(strsplit(x, " ")[[1]][1]))
+models_1 <- sapply(pg_title, function(x) {
+  words <- strsplit(x, " ")[[1]]
+  if (length(words) >= 2) trimws(words[2]) else NA  # Handle possible missing models
+})
+prices_1 <- sapply(pg_title, function(x) {
+  words <- strsplit(x, " ")[[1]]
+  if (length(words) > 1) trimws(tail(words, 1)) else NA  # Handle possible missing prices
+})
+
+# Ensure extracted data is also of min_length
+brands_1 <- brands_1[1:min_length]
+models_1 <- models_1[1:min_length]
+prices_1 <- prices_1[1:min_length]
+
+# Combination of the extracted data into a dataframe
+temp_data1 <- data.frame(
+  brand = brands_1,
+  model = models_1,
+  year = car_year_1,
+  mileage = mileages_1,
+  price = prices_1,
+  stringsAsFactors = FALSE
+)
+
+# Ensure car_datas exists before binding
+if (!exists("car_datas")) {
+  car_datas <- temp_data1
+} else {
+  car_datas <- bind_rows(car_datas, temp_data1)
+}
+
+# View the collected data
+View(car_datas)
+
+```
+
+```{r}
+#Looping through the first 8 pages of the website
+for (i in 1:8){
+url = paste0("https://www.motorpoint.co.uk/used-cars?Page=",i)
+webpages <- read_html(url)
+#Extraction of the title page and the text of the html webpage
+brand <- html_nodes(webpages, ".title") %>% html_text()
+# Extraction of the brand name
+brand_2 <- trimws(sapply(strsplit(brand, " "), `[`, 1))
+# Extraction of the car models
+model_2 <- trimws(sapply(strsplit(brand, " "), function(x) x[length(x)-1]))
+#Extraction of the div container containing the year
+year <- html_nodes(webpages, ".primary-details") %>% html_text()
+# Extraction of the year the car was produced
+year_2 <- trimws(sapply(strsplit(year, "\\|"), `[`, 1))
+# Extraction of the car mileage
+mileage_2 <- trimws(sapply(strsplit(year, "\\|"), function(x) tail(x, 1)))
+#Extraction of the car price
+price_2 <- html_nodes(webpages, ".price-text") %>% html_text()
+#Extraction of the car engine horse power
+horse_power_2 <- html_nodes(webpages, ".sub-title") %>% html_text()
+# Extraction of the engine type
+engine_2 <- trimws(sapply(strsplit(horse_power_2, " "), `[`, 1))
+#Handling columns with missing values while scraing
+min_len <- min(length(brand_2), length(model_2), length(mileage_2), length(year_2), length(price_2), length(engine_2))
+# Creation of a temporary dataframe for the extracted data
+temp_data2 <- data.frame(
+  brand = brand_2[1:min_len],
+  model = model_2[1:min_len],
+  year = year_2[1:min_len],
+  mileage = mileage_2[1:min_len],
+  engine = engine_2[1:min_len],
+  price = price_2[1:min_len]
+)
+# Binding the temporary dataframe with the existing dataframe
+car_datas <- bind_rows(car_datas, temp_data2)
+view(car_datas)
+}
+
+```
+```{r}
+
+# CLEANING THE BRAND COLUMN TO REMOVE EXTRA SPACES AND KEEP ONLY THE FIRST WORD
+car_datas$brand <- word(trimws(str_replace_all(car_datas$brand, "\\s+", " ")), 1)
+
+# SPLIT DATASET INTO TWO PARTS
+car_data1 <- car_datas[1:282, ]
+car_data2 <- car_datas[283:nrow(car_datas), ]
+
+### CLEANING CAR_DATA2
+
+# Extract mileage values after '|' and convert to numeric
+car_data2$mileage <- as.numeric(str_replace_all(str_extract(car_data2$mileage, "(?<=\\| ).*"), "[^0-9]", ""))
+
+# Extract only the four-digit year (before '(') and convert to numeric
+car_data2$year <- as.numeric(str_extract(car_data2$year, "^\\d{4}"))
+
+# Extract numeric values from engine column and convert to standard KW
+car_data2$engine <- as.numeric(str_extract(car_data2$engine, "[0-9]+\\.?[0-9]*"))
+car_data2$engine <- ifelse(car_data2$engine > 10, car_data2$engine / 100, car_data2$engine)
+
+# Remove pound sign and commas from price column
+car_data2$price <- as.numeric(str_replace_all(car_data2$price, "£|,", ""))
+
+# Replace numbers in model column with NA
+car_data2$model <- ifelse(str_detect(car_data2$model, "^\\d+$"), NA, car_data2$model)
+
+### CLEANING CAR_DATA1
+
+# Extract numeric values from engine column
+car_data1$engine <- as.numeric(str_extract(car_data1$engine, "[0-9]+\\.?[0-9]*"))
+
+# Extract four-digit mileage values for rows containing '('
+car_data1$mileage <- ifelse(str_detect(car_data1$mileage, "^\\d{4} \\("), 
+                            str_extract(car_data1$mileage, "^\\d{4}"), 
+                            car_data1$mileage)
+
+# Replace "Brand new" with "2025" in mileage column
+car_data1$mileage <- ifelse(str_to_lower(car_data1$mileage) == "brand new", "2025", car_data1$mileage)
+
+# Remove commas and convert mileage to numeric
+car_data1$mileage <- as.numeric(str_replace_all(car_data1$mileage, ",", ""))
+
+# Clean year column: remove commas, replace non-numeric values with NA, and convert to numeric
+car_data1$year <- as.numeric(str_replace_all(car_data1$year, "[^0-9]", ""))
+
+# Identify misplaced values
+misplaced_mileage <- !is.na(car_data1$year) & car_data1$year >= 10000
+misplaced_year <- !is.na(car_data1$mileage) & between(car_data1$mileage, 1900, 2025)
+
+# Swap misplaced values
+car_data1$temp <- car_data1$year
+car_data1$year[misplaced_mileage] <- car_data1$mileage[misplaced_mileage]
+car_data1$mileage[misplaced_year] <- car_data1$temp[misplaced_year]
+car_data1$temp <- NULL
+
+# Standardize engine values to KW
+car_data1$engine <- ifelse(car_data1$engine > 10, car_data1$engine / 100, car_data1$engine)
+
+# Remove pound sign and commas from price column
+car_data1$price <- as.numeric(str_replace_all(car_data1$price, "£|,", ""))
+
+# MERGE BOTH DATASETS
+clean_car_data <- bind_rows(car_data1, car_data2)
+
+# USE MICE TO IMPUTE MISSING VALUES
+imputed_data <- mice(clean_car_data, m=1, method='pmm', seed=123)
+
+# Complete the dataset with imputed values
+clean_car_data <- complete(imputed_data)
+
+# Remove index and reset row numbers
+rownames(clean_car_data) <- NULL
+
+# Convert mileage to integer (remove decimals)
+clean_car_data$mileage <- floor(clean_car_data$mileage)
+
+# REMOVE ROWS WITH ANY NA VALUES
+clean_car_data <- na.omit(clean_car_data)  
+
+# View and save cleaned dataset
+View(clean_car_data)
+
+
+
+```
+```{r}
+#Performing some Exploratory Data Analysis on the Dataset 
+
+
+#Summarise the dataset
+summary(clean_car_data)
+#Count missing values
+colSums(is.na(clean_car_data))
+
+#PLot histograms for numeric variable
+
+par(mfrow = c(2,2))
+hist(clean_car_data$year, col = "skyblue", main = "Distribution of Car Year", xlab = "Year", breaks = 25)
+hist(clean_car_data$mileage, col = "lightcoral", main = "Distribution of Mileage", xlab = "Mileage", breaks = 20)
+hist(clean_car_data$engine, col = "lightgreen", main = "Distribution of Engine Power", xlab = "Engine Size", breaks = 15)
+hist(clean_car_data$price, col = "gold", main = "Distribution of Car Price", xlab = "Price", breaks = 20)
+
+#Get the top car brands
+top_brands <- clean_car_data %>% count(brand, sort = TRUE) %>% head(10)
+
+#plot ggplot of the top brands
+ggplot(top_brands, aes(x = reorder(brand, -n), y = n, fill = brand)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Top 10 Most Common Car Brands", x = "Brand", y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#Correlation matrix
+numeric_vars <- clean_car_data %>% select(where(is.numeric))
+corr_matrix <- cor(numeric_vars, use = "complete.obs")
+
+#PLot correlation heatmap
+corrplot(corr_matrix, method = "color", addCoef.col = "black", tl.col = "black", tl.srt = 45)
+
+#Boxplot to detect outliers
+par(mfrow = c(1,3))
+boxplot(clean_car_data$year, main = "Boxplot of Car Year", col = "skyblue")
+boxplot(clean_car_data$mileage, main = "Boxplot of Mileage", col = "lightcoral")
+boxplot(clean_car_data$price, main = "Boxplot of Car Price", col = "gold")
+```
+
+```{r}
+
+```
+
+
